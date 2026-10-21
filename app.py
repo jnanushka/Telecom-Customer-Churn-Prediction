@@ -97,3 +97,129 @@ st.markdown("""
     .stButton > button {
         width: 100%;
         background-color: #2563eb;
+        color: #ffffff;
+        font-weight: 600;
+        padding: 0.75rem 1.5rem;
+        border-radius: 10px;
+        border: none;
+        transition: all 0.2s ease;
+    }
+    .stButton > button:hover {
+        background-color: #1d4ed8;
+        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+    }
+</style>
+""", unsafe_allow_html=True)
+
+# Load trained model and expected columns
+@st.cache_resource
+def load_assets():
+    with open('model.sav', 'rb') as f_model:
+        model = pickle.load(f_model)
+    with open('columns.pkl', 'rb') as f_cols:
+        expected_cols = pickle.load(f_cols)
+    return model, expected_cols
+
+try:
+    model, expected_cols = load_assets()
+except Exception as e:
+    st.error(f"Error loading model files: {e}")
+    st.stop()
+
+# Header Banner
+st.markdown("""
+<div class="hero-container">
+    <div class="hero-title">⚡ Customer Churn Prediction Engine</div>
+    <div class="hero-subtitle">Input customer demographics, services, and billing contracts to assess retention risk.</div>
+</div>
+""", unsafe_allow_html=True)
+
+# Layout Inputs
+col1, col2, col3 = st.columns([1, 1, 1], gap="medium")
+
+with col1:
+    st.markdown('<div class="section-card"><div class="section-header">👤 Customer Demographics</div>', unsafe_allow_html=True)
+    gender = st.selectbox("Gender", ["Female", "Male"])
+    senior_citizen = st.selectbox("Senior Citizen", ["No", "Yes"])
+    partner = st.selectbox("Partner", ["No", "Yes"])
+    dependents = st.selectbox("Dependents", ["No", "Yes"])
+    tenure = st.slider("Tenure (Months)", min_value=1, max_value=72, value=12)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with col2:
+    st.markdown('<div class="section-card"><div class="section-header">📶 Subscribed Services</div>', unsafe_allow_html=True)
+    phone_service = st.selectbox("Phone Service", ["No", "Yes"])
+    multiple_lines = st.selectbox("Multiple Lines", ["No", "Yes", "No phone service"])
+    internet_service = st.selectbox("Internet Service Provider", ["DSL", "Fiber optic", "No"])
+    online_security = st.selectbox("Online Security", ["No", "Yes", "No internet service"])
+    online_backup = st.selectbox("Online Backup", ["No", "Yes", "No internet service"])
+    device_protection = st.selectbox("Device Protection", ["No", "Yes", "No internet service"])
+    tech_support = st.selectbox("Tech Support", ["No", "Yes", "No internet service"])
+    streaming_tv = st.selectbox("Streaming TV", ["No", "Yes", "No internet service"])
+    streaming_movies = st.selectbox("Streaming Movies", ["No", "Yes", "No internet service"])
+    st.markdown('</div>', unsafe_allow_html=True)
+
+with col3:
+    st.markdown('<div class="section-card"><div class="section-header">💳 Contract & Billing</div>', unsafe_allow_html=True)
+    contract = st.selectbox("Contract Type", ["Month-to-month", "One year", "Two year"])
+    paperless_billing = st.selectbox("Paperless Billing", ["No", "Yes"])
+    payment_method = st.selectbox(
+        "Payment Method", 
+        ["Electronic check", "Mailed check", "Bank transfer (automatic)", "Credit card (automatic)"]
+    )
+    monthly_charges = st.number_input("Monthly Charges ($)", min_value=18.0, max_value=130.0, value=65.0, step=0.5)
+    total_charges = st.number_input("Total Charges ($)", min_value=18.0, max_value=9000.0, value=float(tenure * monthly_charges), step=10.0)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+st.write("")
+predict_btn = st.button("Analyze Churn Risk")
+
+if predict_btn:
+    raw_input = {
+        'gender': gender,
+        'SeniorCitizen': 1 if senior_citizen == "Yes" else 0,
+        'Partner': partner,
+        'Dependents': dependents,
+        'tenure': tenure,
+        'PhoneService': phone_service,
+        'MultipleLines': multiple_lines,
+        'InternetService': internet_service,
+        'OnlineSecurity': online_security,
+        'OnlineBackup': online_backup,
+        'DeviceProtection': device_protection,
+        'TechSupport': tech_support,
+        'StreamingTV': streaming_tv,
+        'StreamingMovies': streaming_movies,
+        'Contract': contract,
+        'PaperlessBilling': paperless_billing,
+        'PaymentMethod': payment_method,
+        'MonthlyCharges': monthly_charges,
+        'TotalCharges': total_charges
+    }
+    
+    input_df = pd.DataFrame([raw_input])
+    encoded_df = pd.get_dummies(input_df)
+    final_df = encoded_df.reindex(columns=expected_cols, fill_value=0)
+    
+    prediction = model.predict(final_df)[0]
+    has_proba = hasattr(model, "predict_proba")
+    proba = model.predict_proba(final_df)[0][1] if has_proba else None
+
+    if prediction == 1:
+        prob_str = f"Estimated probability: <b>{proba * 100:.1f}%</b>" if proba is not None else "Recommended action: Offer contract incentives or discounts."
+        st.markdown(f"""
+        <div class="result-box" style="border-left: 5px solid #ef4444;">
+            <span class="badge-churn">High Risk</span>
+            <h3 style="color: #991b1b; margin-top: 0.75rem;">Customer is Likely to Churn</h3>
+            <p style="color: #64748b; margin-bottom: 0;">{prob_str}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        prob_str = f"Estimated churn risk: <b>{proba * 100:.1f}%</b>" if proba is not None else "Recommended action: Customer relationship is healthy."
+        st.markdown(f"""
+        <div class="result-box" style="border-left: 5px solid #22c55e;">
+            <span class="badge-safe">Low Risk</span>
+            <h3 style="color: #166534; margin-top: 0.75rem;">Customer is Likely to Stay (Loyal)</h3>
+            <p style="color: #64748b; margin-bottom: 0;">{prob_str}</p>
+        </div>
+        """, unsafe_allow_html=True)
